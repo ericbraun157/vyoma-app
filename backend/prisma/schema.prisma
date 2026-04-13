@@ -1,0 +1,292 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  // NestJS default build output is CommonJS; use Prisma's CJS client generator.
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Phase 2 schema mirrors the Phase 1 AsyncStorage models, adding:
+// - multi-tenant: businessId on all core entities
+// - multi-branch: branchId on all core entities
+// - auth identity: users table with role, linked optionally to staff
+
+enum UserRole {
+  owner
+  manager
+  staff
+}
+
+enum Plan {
+  free
+  basic
+  pro
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+}
+
+enum InvoiceStatus {
+  pending
+  paid
+  overdue
+}
+
+enum PaymentMethod {
+  cash
+  upi
+  card
+}
+
+model User {
+  id          String   @id @default(cuid())
+  mobile      String   @unique
+  displayName String?
+  role        UserRole @default(owner)
+
+  // Phase 2: refresh token rotation can be added later; keep minimal for MVP.
+  refreshTokenHash String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessesOwned Business[] @relation("BusinessOwner")
+  staffProfile    Staff?
+}
+
+model Business {
+  id          String @id @default(cuid())
+  ownerUserId String
+  owner       User   @relation("BusinessOwner", fields: [ownerUserId], references: [id])
+
+  name         String
+  type         String
+  phone        String
+  email        String?
+  address      String?
+  city         String?
+  gstin        String?
+  upiId        String?
+  bookingSlug  String  @unique
+  workingHours Json
+
+  plan Plan @default(free)
+
+  // Kept as scalar to avoid Prisma 1:1 relation constraints; app enforces that it belongs to this business.
+  defaultBranchId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches  Branch[]
+  customers Customer[]
+  staff     Staff[]
+  services  Service[]
+  bookings  Booking[]
+  invoices  Invoice[]
+  inventory InventoryItem[]
+
+  @@index([ownerUserId])
+}
+
+model Branch {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  name         String
+  address      String?
+  city         String?
+  isPrimary    Boolean @default(false)
+  workingHours Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers Customer[]
+  staff     Staff[]
+  services  Service[]
+  bookings  Booking[]
+  invoices  Invoice[]
+  inventory InventoryItem[]
+
+  @@index([businessId])
+}
+
+model Customer {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  name        String
+  phone       String
+  email       String?
+  notes       String?
+  totalVisits Int       @default(0)
+  totalSpent  Int       @default(0)
+  lastVisit   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+  invoices Invoice[]
+
+  @@index([businessId, branchId])
+  @@index([phone])
+}
+
+model Staff {
+  id         String  @id @default(cuid())
+  businessId String
+  branchId   String
+  userId     String? @unique
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  user     User?    @relation(fields: [userId], references: [id])
+
+  name        String
+  role        String
+  phone       String
+  isActive    Boolean  @default(true)
+  workingDays String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([businessId, branchId])
+}
+
+model Service {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  name     String
+  price    Int
+  duration Int
+  category String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([businessId, branchId])
+}
+
+model Booking {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  customerName  String
+  customerPhone String
+
+  serviceId    String
+  service      Service @relation(fields: [serviceId], references: [id])
+  serviceName  String
+  servicePrice Int
+
+  staffId   String?
+  staff     Staff?  @relation(fields: [staffId], references: [id])
+  staffName String?
+
+  date     String // YYYY-MM-DD (kept as string to match Phase 1 and simplify query params)
+  time     String // HH:mm
+  duration Int
+  status   BookingStatus @default(pending)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoice Invoice? @relation("BookingInvoice")
+
+  @@index([businessId, branchId, date])
+  @@index([customerId])
+  @@index([staffId])
+}
+
+model Invoice {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  number String
+
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  customerName  String
+  customerPhone String
+
+  bookingId String?  @unique
+  booking   Booking? @relation("BookingInvoice", fields: [bookingId], references: [id])
+
+  items         Json
+  subtotal      Int
+  gstPercent    Int
+  gstAmount     Int
+  total         Int
+  status        InvoiceStatus  @default(pending)
+  paymentMethod PaymentMethod?
+  dueDate       DateTime
+  paidAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, number])
+  @@index([businessId, branchId])
+  @@index([status])
+}
+
+model InventoryItem {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+
+  business Business @relation(fields: [businessId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  name              String
+  category          String?
+  quantity          Int
+  unit              String?
+  lowStockThreshold Int     @default(0)
+  costPrice         Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId, branchId])
+  @@index([category])
+}

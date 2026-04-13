@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Vyoma",
+    "slug": "sme-saas-mvp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B4DFF"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B4DFF"
+      },
+      "package": "com.yourbrand.sme",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "26cd1c9a-91e3-4cfc-aab1-0a34b6466267"
+      }
+    },
+    "owner": "eric_braun"
+  }
+}
